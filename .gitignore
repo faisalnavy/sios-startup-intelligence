@@ -51,3 +51,6 @@ logs/
 
 # Runtime
 *.pid
+
+# Local secrets (never commit)
+railway-env.txt
