@@ -1,10 +1,7 @@
 [build]
   base    = "frontend"
-  command = "NODE_OPTIONS='--max-old-space-size=1536' npm run build"
+  command = "npm run build"
   publish = ".next"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
 
 [build.environment]
   NODE_VERSION = "20"
