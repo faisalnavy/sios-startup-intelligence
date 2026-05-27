@@ -1,0 +1,11 @@
+node_modules/
+frontend/node_modules/
+backend/venv/
+.next/
+frontend/.next/
+.git/
+*.pyc
+__pycache__/
+backend/__pycache__/
+*.log
+railway-env.txt
