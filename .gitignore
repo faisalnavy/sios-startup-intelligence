@@ -1,0 +1,53 @@
+# Environment files — NEVER commit these
+backend/.env
+frontend/.env.local
+frontend/.env*.local
+*.env
+.env
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/**/*.pyc
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+node_modules/
+.next/
+out/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Claude
+.claude/
+
+# Runtime
+*.pid
