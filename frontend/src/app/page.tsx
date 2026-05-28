@@ -14,8 +14,8 @@ const FEATURES = [
   },
   {
     icon: '⚡',
-    title: '8 Parallel AI Agents',
-    desc: 'Market, VC intelligence, competitor, failure risk, financial, country feasibility, trend, and scoring agents all run simultaneously.',
+    title: '12 Parallel AI Agents',
+    desc: 'Market, VC, competitor, failure risk, financial, country feasibility, trend, moat, execution simulation, build vs partner, investor fit, and scoring agents — all run simultaneously.',
   },
   {
     icon: '📊',
@@ -29,8 +29,8 @@ const FEATURES = [
   },
   {
     icon: '📄',
-    title: 'McKinsey-Grade Reports',
-    desc: 'Download a 12-section PDF with executive summary, risk matrix, growth roadmap, and a definitive invest/no-invest verdict.',
+    title: 'Institutional-Grade Reports',
+    desc: 'Download a 15-section PDF with executive summary, risk matrix, growth roadmap, moat analysis, and a definitive invest/no-invest verdict.',
   },
 ]
 
@@ -59,9 +59,9 @@ const PACKS = [
 
 const STEPS = [
   { n: '01', t: 'Submit Your Idea', d: 'Fill in your startup details: name, description, target market, stage, and founder background.' },
-  { n: '02', t: '8 Agents Deploy', d: 'Market, VC, competitor, financial, risk, country feasibility, trend, and scoring agents run in parallel.' },
+  { n: '02', t: '12 Agents Deploy', d: 'Market, VC, competitor, financial, risk, moat, execution simulation, investor fit, and more — all run in parallel.' },
   { n: '03', t: 'Dual-AI Analysis', d: 'Claude analyzes each dimension. GPT-4 cross-validates. Claude synthesizes a final consensus report.' },
-  { n: '04', t: 'Download Report', d: 'Get a 12-section PDF with score, verdict, risk matrix, growth roadmap — in under 5 minutes.' },
+  { n: '04', t: 'Download Report', d: 'Get a 15-section PDF with score, verdict, risk matrix, moat analysis, strategic alternatives — in under 6 minutes.' },
 ]
 
 export default function LandingPage() {
@@ -101,15 +101,15 @@ export default function LandingPage() {
         <div className="relative max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 rounded-full px-4 py-1.5 text-sm text-violet-400 mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            8 AI Agents · Dual-AI Cross-Validation · Real-Time Web Research
+            12 AI Agents · Dual-AI Cross-Validation · Real-Time Web Research
           </div>
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
             Know If Your Startup<br />
             <span className="gradient-text">Will Succeed</span>
           </h1>
           <p className="text-xl text-[#94a3b8] max-w-2xl mx-auto mb-10 leading-relaxed">
-            SIOS deploys 8 specialized AI agents to analyze market size, financials, competition,
-            and regulatory risk — then delivers a McKinsey-grade verdict in minutes.
+            SIOS deploys 12 specialized AI agents to analyze market size, financials, competition,
+            and regulatory risk — then delivers an institutional-grade verdict in minutes.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <Link href="/login" className="btn-primary text-base px-8 py-4 inline-flex items-center justify-center gap-2">
@@ -123,7 +123,7 @@ export default function LandingPage() {
           {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
             {[
-              { n: '8', l: 'AI Agents' },
+              { n: '12', l: 'AI Agents' },
               { n: '2', l: 'AI Models' },
               { n: '21+', l: 'Data Sources' },
               { n: '<5min', l: 'Avg. Report Time' },
@@ -177,7 +177,13 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto">
           <p className="text-center text-xs text-[#475569] uppercase tracking-widest mb-6">Agent Pipeline</p>
           <div className="flex flex-wrap gap-2 justify-center">
-            {['Market Research', 'VC Intelligence', 'Competitor Analysis', 'Failure Risk', 'Financial & CA', 'Country Feasibility', 'Trend Analysis', 'Scoring Engine', 'Investment Recommendation'].map(a => (
+            {[
+              'Market Research', 'VC Intelligence', 'Competitor Analysis', 'Failure Risk',
+              'Financial & CA', 'Country Feasibility', 'Trend Analysis',
+              'Alternative Strategy', 'Moat Analysis', 'Execution Simulation',
+              'Build vs Partner', 'Investor Fit',
+              'Scoring Engine', 'Investment Recommendation',
+            ].map(a => (
               <span key={a} className="text-xs bg-[#0a0a0f] border border-[#1e1e2e] text-[#94a3b8] px-3 py-1.5 rounded-full">
                 {a}
               </span>
@@ -284,7 +290,7 @@ export default function LandingPage() {
           <div className="text-sm text-[#475569]">
             Powered by Claude · GPT-4 · Tavily
           </div>
-          <div className="text-sm text-[#475569]">© 2025 SIOS. All rights reserved.</div>
+          <div className="text-sm text-[#475569]">© 2026 SIOS. All rights reserved.</div>
         </div>
       </footer>
     </div>
