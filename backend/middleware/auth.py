@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Security
+from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import os
@@ -38,3 +38,31 @@ def optional_token(credentials: HTTPAuthorizationCredentials = Security(bearer))
         return verify_token(credentials)
     except HTTPException:
         return None
+
+
+def verify_admin(credentials: HTTPAuthorizationCredentials = Security(bearer)) -> dict:
+    """
+    Verify the caller is a logged-in admin user.
+    Checks is_admin flag stored in the JWT app_metadata or via Supabase lookup.
+    """
+    user = verify_token(credentials)
+
+    # Check app_metadata.is_admin (set via Supabase service role)
+    app_meta = user.get("app_metadata", {})
+    if app_meta.get("is_admin"):
+        return user
+
+    # Fallback: check user_metadata.is_admin
+    user_meta = user.get("user_metadata", {})
+    if user_meta.get("is_admin"):
+        return user
+
+    # Fallback: check DB
+    from services.supabase_service import SupabaseService
+    db = SupabaseService()
+    if db.is_available():
+        db_user = db.get_user(user.get("sub", ""))
+        if db_user and db_user.get("is_admin"):
+            return user
+
+    raise HTTPException(status_code=403, detail="Admin access required")

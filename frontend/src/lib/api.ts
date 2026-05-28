@@ -15,6 +15,10 @@ export interface StartupInput {
   competitors_known?: string
   gtm_strategy?: string
   unique_advantage?: string
+  // v2 fields
+  business_plan_text?: string
+  custom_questions?: string[]
+  founder_profile_urls?: string[]
 }
 
 export interface ProgressEvent {
@@ -35,6 +39,40 @@ export interface ScoreBreakdown {
   total_score: number
 }
 
+export interface PivotPath {
+  path_name: string
+  description: string
+  effort: string
+  potential: string
+}
+
+export interface BuildVsPartnerItem {
+  capability: string
+  decision: 'BUILD' | 'PARTNER' | 'BUY'
+  reason: string
+  suggested_partners?: string
+}
+
+export interface ExecutionRiskItem {
+  risk: string
+  probability_pct: number
+  timeline: string
+  impact: string
+}
+
+export interface InvestorArchetype {
+  archetype: string
+  fit_score: number
+  why_would_invest: string
+  why_would_reject: string
+  example_funds?: string
+}
+
+export interface CustomQA {
+  question: string
+  answer: string
+}
+
 export interface FullReport {
   analysis_id: string
   startup_name: string
@@ -51,6 +89,20 @@ export interface FullReport {
   success_probability: number
   funding_recommendation: string
   generated_at: string
+  // v2 agent fields
+  alternative_strategies?: string
+  pivot_paths?: PivotPath[]
+  moat_analysis?: string
+  moat_score?: number
+  execution_simulation?: string
+  execution_risks?: ExecutionRiskItem[]
+  build_vs_partner?: string
+  build_vs_partner_matrix?: BuildVsPartnerItem[]
+  investor_fit?: string
+  investor_archetypes?: InvestorArchetype[]
+  fundraising_difficulty?: string
+  custom_qa?: CustomQA[]
+  amended_plan?: string
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -234,4 +286,225 @@ export async function getPaymentHistory(): Promise<any[]> {
   if (!res.ok) return []
   const data = await res.json()
   return (data as any).payments ?? []
+}
+
+// ── Business Plan PDF Upload ───────────────────────────────────────────────────
+
+export async function uploadBusinessPlan(file: File): Promise<{
+  text: string
+  pages: number
+  word_count: number
+  filename: string
+}> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_URL}/api/upload/business-plan`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error((data as any).detail || 'Failed to upload business plan')
+  }
+  return res.json()
+}
+
+// ── Amended Business Plan ─────────────────────────────────────────────────────
+
+export async function generateAmendedPlan(analysisId: string): Promise<{
+  analysis_id: string
+  startup_name: string
+  amended_plan: string
+  generated_at: string
+}> {
+  const headers = await getAuthHeaders()
+  const res = await fetch(`${API_URL}/api/analysis/${analysisId}/generate-plan`, {
+    method: 'POST',
+    headers,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error((data as any).detail || 'Failed to generate amended plan')
+  }
+  return res.json()
+}
+
+// ── Dynamic Credit Packs ──────────────────────────────────────────────────────
+
+export async function getDynamicCreditPacks(): Promise<any[]> {
+  const res = await fetch(`${API_URL}/api/payments/packs-dynamic`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data as any).packs ?? []
+}
+
+// ── Admin API ─────────────────────────────────────────────────────────────────
+
+async function getAdminHeaders(): Promise<Record<string, string>> {
+  const headers = await getAuthHeaders()
+  return headers
+}
+
+export async function adminGetStats(): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/stats`, { headers })
+  if (!res.ok) throw new Error('Failed to fetch admin stats')
+  return res.json()
+}
+
+export async function adminListUsers(page = 1, perPage = 50, search?: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
+  if (search) params.set('search', search)
+  const res = await fetch(`${API_URL}/api/admin/users?${params}`, { headers })
+  if (!res.ok) throw new Error('Failed to fetch users')
+  return res.json()
+}
+
+export async function adminGetUserDetail(userId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/users/${userId}`, { headers })
+  if (!res.ok) throw new Error('Failed to fetch user detail')
+  return res.json()
+}
+
+export async function adminAdjustCredits(userId: string, delta: number, reason: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/users/${userId}/credits`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ delta, reason }),
+  })
+  if (!res.ok) throw new Error('Failed to adjust credits')
+  return res.json()
+}
+
+export async function adminToggleSuspend(userId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/users/${userId}/suspend`, {
+    method: 'POST',
+    headers,
+  })
+  if (!res.ok) throw new Error('Failed to toggle suspend')
+  return res.json()
+}
+
+export async function adminListAnalyses(page = 1, perPage = 50, verdict?: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
+  if (verdict) params.set('verdict', verdict)
+  const res = await fetch(`${API_URL}/api/admin/analyses?${params}`, { headers })
+  if (!res.ok) throw new Error('Failed to fetch analyses')
+  return res.json()
+}
+
+export async function adminDeleteAnalysis(analysisId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/analyses/${analysisId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  if (!res.ok) throw new Error('Failed to delete analysis')
+  return res.json()
+}
+
+export async function adminListCreditPacks(): Promise<any[]> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/credit-packs`, { headers })
+  if (!res.ok) return []
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+export async function adminCreateCreditPack(pack: any): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/credit-packs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(pack),
+  })
+  if (!res.ok) throw new Error('Failed to create credit pack')
+  return res.json()
+}
+
+export async function adminUpdateCreditPack(packId: string, updates: any): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/credit-packs/${packId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(updates),
+  })
+  if (!res.ok) throw new Error('Failed to update credit pack')
+  return res.json()
+}
+
+export async function adminDeleteCreditPack(packId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/credit-packs/${packId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  if (!res.ok) throw new Error('Failed to delete credit pack')
+  return res.json()
+}
+
+export async function adminListDiscounts(): Promise<any[]> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/discounts`, { headers })
+  if (!res.ok) return []
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+export async function adminCreateDiscount(discount: any): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/discounts`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(discount),
+  })
+  if (!res.ok) throw new Error('Failed to create discount')
+  return res.json()
+}
+
+export async function adminToggleDiscount(discountId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/discounts/${discountId}/toggle`, {
+    method: 'PUT',
+    headers,
+  })
+  if (!res.ok) throw new Error('Failed to toggle discount')
+  return res.json()
+}
+
+export async function adminDeleteDiscount(discountId: string): Promise<any> {
+  const headers = await getAdminHeaders()
+  const res = await fetch(`${API_URL}/api/admin/discounts/${discountId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  if (!res.ok) throw new Error('Failed to delete discount')
+  return res.json()
+}
+
+export async function adminGetCreditAdjustments(page = 1, perPage = 50): Promise<any> {
+  const headers = await getAdminHeaders()
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
+  const res = await fetch(`${API_URL}/api/admin/credit-adjustments?${params}`, { headers })
+  if (!res.ok) return { adjustments: [], total: 0 }
+  return res.json()
+}
+
+export async function validateDiscountCode(code: string): Promise<{
+  code: string
+  discount_pct: number
+  description: string
+} | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/admin/discounts/validate/${encodeURIComponent(code)}`)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
 }

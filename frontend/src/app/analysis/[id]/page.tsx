@@ -2,9 +2,21 @@
 import Link from 'next/link'
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { subscribeToProgress, getAnalysisStatus, getReport, FullReport, ProgressEvent } from '../../../lib/api'
+import {
+  subscribeToProgress,
+  getAnalysisStatus,
+  getReport,
+  generateAmendedPlan,
+  FullReport,
+  ProgressEvent,
+  PivotPath,
+  BuildVsPartnerItem,
+  ExecutionRiskItem,
+  InvestorArchetype,
+  CustomQA,
+} from '../../../lib/api'
 
-const TOTAL_AGENTS = 9
+const TOTAL_AGENTS = 12  // 7 original + 5 new v2 agents
 
 const VERDICT_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
   'STRONG BUY':       { color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/30' },
@@ -38,10 +50,9 @@ function ScoreBar({ score }: { score: number }) {
 }
 
 function AgentItem({ event }: { event: ProgressEvent }) {
-  const done = event.status === 'completed' || event.status === 'complete'
+  const done    = event.status === 'completed' || event.status === 'complete'
   const running = event.status === 'running'
   const errored = event.status.startsWith('error')
-
   return (
     <div className="flex items-center gap-3 py-2 border-b border-[#1e1e2e] last:border-0">
       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -55,8 +66,8 @@ function AgentItem({ event }: { event: ProgressEvent }) {
   )
 }
 
-function Section({ title, content }: { title: string; content: string }) {
-  const [open, setOpen] = useState(true)
+function Section({ title, content, defaultOpen = true }: { title: string; content: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between mb-4 text-left">
@@ -72,7 +83,223 @@ function Section({ title, content }: { title: string; content: string }) {
   )
 }
 
-// PDF generation — opens a styled print window
+// ── Moat Score Badge ──────────────────────────────────────────────────────────
+function MoatBadge({ score }: { score: number }) {
+  const color = score >= 70 ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+    : score >= 45 ? 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10'
+    : 'text-red-400 border-red-400/30 bg-red-400/10'
+  const label = score >= 70 ? 'Strong Moat' : score >= 45 ? 'Moderate Moat' : 'Weak Moat'
+  return (
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold ${color}`}>
+      <span>🏰</span>
+      <span>Defensibility {score}/100 · {label}</span>
+    </div>
+  )
+}
+
+// ── Pivot Path Cards ──────────────────────────────────────────────────────────
+function PivotCards({ pivots }: { pivots: PivotPath[] }) {
+  if (!pivots?.length) return null
+  const effortColor: Record<string, string> = {
+    Low: 'text-emerald-400', Medium: 'text-yellow-400', High: 'text-red-400',
+  }
+  const potentialColor: Record<string, string> = {
+    High: 'text-emerald-400', Medium: 'text-yellow-400', Low: 'text-red-400',
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+      {pivots.map((p, i) => (
+        <div key={i} className="bg-[#0d0d14] border border-[#2e2e3e] rounded-xl p-4">
+          <div className="flex items-start justify-between mb-2">
+            <span className="text-white font-semibold text-sm">{p.path_name}</span>
+            <div className="flex gap-2 flex-shrink-0 ml-2">
+              <span className={`text-xs ${effortColor[p.effort] || 'text-[#94a3b8]'}`}>
+                {p.effort} effort
+              </span>
+              <span className={`text-xs ${potentialColor[p.potential] || 'text-[#94a3b8]'}`}>
+                {p.potential} potential
+              </span>
+            </div>
+          </div>
+          <p className="text-[#94a3b8] text-xs leading-relaxed">{p.description}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Execution Risk Table ──────────────────────────────────────────────────────
+function RiskTable({ risks }: { risks: ExecutionRiskItem[] }) {
+  if (!risks?.length) return null
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#2e2e3e]">
+            <th className="text-left py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide">Risk</th>
+            <th className="text-center py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide w-24">Probability</th>
+            <th className="text-left py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide">Timeline</th>
+            <th className="text-left py-2 text-[#64748b] font-medium text-xs uppercase tracking-wide">Impact</th>
+          </tr>
+        </thead>
+        <tbody>
+          {risks.map((r, i) => {
+            const pct = r.probability_pct
+            const probColor = pct >= 70 ? 'text-red-400' : pct >= 40 ? 'text-yellow-400' : 'text-emerald-400'
+            return (
+              <tr key={i} className="border-b border-[#1e1e2e] last:border-0">
+                <td className="py-3 pr-4 text-[#94a3b8]">{r.risk}</td>
+                <td className="py-3 pr-4 text-center">
+                  <span className={`font-bold font-mono ${probColor}`}>{pct}%</span>
+                </td>
+                <td className="py-3 pr-4 text-[#64748b] text-xs">{r.timeline}</td>
+                <td className="py-3 text-[#64748b] text-xs">{r.impact}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Build vs Partner Matrix ───────────────────────────────────────────────────
+function BvpTable({ items }: { items: BuildVsPartnerItem[] }) {
+  if (!items?.length) return null
+  const decisionStyle: Record<string, string> = {
+    BUILD:   'bg-violet-500/20 text-violet-300 border-violet-500/30',
+    PARTNER: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    BUY:     'bg-amber-500/20 text-amber-300 border-amber-500/30',
+  }
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#2e2e3e]">
+            <th className="text-left py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide">Capability</th>
+            <th className="text-center py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide w-24">Decision</th>
+            <th className="text-left py-2 pr-4 text-[#64748b] font-medium text-xs uppercase tracking-wide">Reason</th>
+            <th className="text-left py-2 text-[#64748b] font-medium text-xs uppercase tracking-wide">Suggested Partners</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((row, i) => (
+            <tr key={i} className="border-b border-[#1e1e2e] last:border-0">
+              <td className="py-3 pr-4 text-white font-medium">{row.capability}</td>
+              <td className="py-3 pr-4 text-center">
+                <span className={`text-xs font-bold px-2 py-1 rounded border ${decisionStyle[row.decision] || 'text-[#94a3b8]'}`}>
+                  {row.decision}
+                </span>
+              </td>
+              <td className="py-3 pr-4 text-[#94a3b8] text-xs">{row.reason}</td>
+              <td className="py-3 text-[#64748b] text-xs">{row.suggested_partners || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Investor Archetype Cards ──────────────────────────────────────────────────
+function InvestorCards({ archetypes }: { archetypes: InvestorArchetype[] }) {
+  if (!archetypes?.length) return null
+  return (
+    <div className="mt-4 space-y-3">
+      {archetypes.map((a, i) => {
+        const fitColor = a.fit_score >= 70 ? 'text-emerald-400' : a.fit_score >= 45 ? 'text-yellow-400' : 'text-red-400'
+        return (
+          <div key={i} className="bg-[#0d0d14] border border-[#2e2e3e] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white font-semibold">{a.archetype}</span>
+              <span className={`text-sm font-bold font-mono ${fitColor}`}>{a.fit_score}/100</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              <div>
+                <div className="text-xs text-emerald-400 mb-1 font-medium">✓ Why They'd Invest</div>
+                <p className="text-xs text-[#94a3b8] leading-relaxed">{a.why_would_invest}</p>
+              </div>
+              <div>
+                <div className="text-xs text-red-400 mb-1 font-medium">✗ Why They'd Pass</div>
+                <p className="text-xs text-[#94a3b8] leading-relaxed">{a.why_would_reject}</p>
+              </div>
+            </div>
+            {a.example_funds && (
+              <div className="mt-2 text-xs text-[#475569]">
+                <span className="text-[#64748b]">Example funds: </span>{a.example_funds}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Custom Q&A ────────────────────────────────────────────────────────────────
+function CustomQASection({ qaList }: { qaList: CustomQA[] }) {
+  if (!qaList?.length) return null
+  return (
+    <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+          <span className="text-violet-400 text-sm">?</span>
+        </div>
+        <h3 className="font-semibold text-white">Your Questions Answered</h3>
+        <span className="text-xs text-[#475569] bg-[#1e1e2e] px-2 py-0.5 rounded">{qaList.length} questions</span>
+      </div>
+      <div className="space-y-4">
+        {qaList.map((qa, i) => (
+          <div key={i} className="bg-[#0d0d14] border border-[#2e2e3e] rounded-xl p-4">
+            <div className="flex items-start gap-3 mb-3">
+              <span className="w-6 h-6 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-400 text-xs font-bold flex-shrink-0 mt-0.5">
+                {i + 1}
+              </span>
+              <p className="text-white font-medium text-sm">{qa.question}</p>
+            </div>
+            <div className="ml-9 text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap">
+              {qa.answer}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Amended Plan Modal ────────────────────────────────────────────────────────
+function AmendedPlanModal({ plan, startupName, onClose }: { plan: string; startupName: string; onClose: () => void }) {
+  function copyToClipboard() {
+    navigator.clipboard.writeText(plan).catch(() => {})
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#111118] border border-[#1e1e2e] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-[#1e1e2e]">
+          <div>
+            <h2 className="text-lg font-bold text-white">Amended Business Plan</h2>
+            <p className="text-xs text-[#64748b] mt-0.5">{startupName} · AI-optimized investor-ready version</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyToClipboard}
+              className="text-xs text-[#94a3b8] hover:text-white border border-[#2e2e3e] hover:border-[#3e3e4e] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Copy
+            </button>
+            <button onClick={onClose} className="text-[#64748b] hover:text-white transition-colors text-xl px-2">×</button>
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 p-6">
+          <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap font-mono">{plan}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── PDF Generation ────────────────────────────────────────────────────────────
 function downloadPDF(report: FullReport) {
   const win = window.open('', '_blank')
   if (!win) { alert('Allow pop-ups to download the PDF.'); return }
@@ -87,9 +314,24 @@ function downloadPDF(report: FullReport) {
     { title: '7. Growth Strategy',            content: report.growth_strategy },
     { title: '8. Scaling Roadmap',            content: report.scaling_roadmap },
     { title: '9. Funding Recommendation',     content: report.funding_recommendation },
+    ...(report.alternative_strategies ? [{ title: '10. Alternative Strategies', content: report.alternative_strategies }] : []),
+    ...(report.moat_analysis          ? [{ title: '11. Moat Analysis',          content: report.moat_analysis }] : []),
+    ...(report.execution_simulation   ? [{ title: '12. Execution Simulation',   content: report.execution_simulation }] : []),
+    ...(report.build_vs_partner       ? [{ title: '13. Build vs Partner',       content: report.build_vs_partner }] : []),
+    ...(report.investor_fit           ? [{ title: '14. Investor Fit',           content: report.investor_fit }] : []),
+    ...(report.custom_qa?.length ? [{
+      title: '15. Your Questions Answered',
+      content: report.custom_qa.map((qa, i) => `Q${i+1}: ${qa.question}\n\nA: ${qa.answer}`).join('\n\n---\n\n'),
+    }] : []),
   ]
 
   const scoreItems = SCORE_FIELDS
+  const verdictColor: Record<string, string> = {
+    'STRONG BUY': '#10b981', 'BUY WITH CAUTION': '#f59e0b',
+    'WAIT & WATCH': '#3b82f6', 'PIVOT REQUIRED': '#f97316', 'DO NOT INVEST': '#ef4444',
+  }
+  const vColor = verdictColor[report.final_verdict] || '#94a3b8'
+
   const sectionsHTML = sections.map(s =>
     `<div class="section">
       <div class="section-title">${s.title}</div>
@@ -103,12 +345,6 @@ function downloadPDF(report: FullReport) {
       <div class="si-lbl">${f.label}</div>
     </div>`
   ).join('')
-
-  const verdictColor: Record<string, string> = {
-    'STRONG BUY': '#10b981', 'BUY WITH CAUTION': '#f59e0b',
-    'WAIT & WATCH': '#3b82f6', 'PIVOT REQUIRED': '#f97316', 'DO NOT INVEST': '#ef4444',
-  }
-  const vColor = verdictColor[report.final_verdict] || '#94a3b8'
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -144,7 +380,7 @@ function downloadPDF(report: FullReport) {
 <body>
 <div class="header">
   <h1>${report.startup_name}</h1>
-  <div class="sub">Startup Intelligence Report · Generated ${new Date(report.generated_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
+  <div class="sub">Startup Intelligence Report v2 · Generated ${new Date(report.generated_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
   <div class="verdict">${report.final_verdict}</div>
 </div>
 <div class="score-band">
@@ -152,12 +388,13 @@ function downloadPDF(report: FullReport) {
     <div class="score-num">${report.score_breakdown.total_score}</div>
     <div class="score-sub">/ 100 Total Score</div>
     <div class="prob">${report.success_probability}% Success Probability</div>
+    ${report.moat_score != null ? `<div class="prob" style="margin-left:8px">Moat ${report.moat_score}/100</div>` : ''}
   </div>
   <div class="score-grid">${scoreHTML}</div>
 </div>
 <div class="content">${sectionsHTML}</div>
 <div class="footer">
-  Analysis ID: ${report.analysis_id} &nbsp;·&nbsp; Powered by Claude (Anthropic) + GPT-4 (OpenAI) + Tavily &nbsp;·&nbsp; SIOS v2.0
+  Analysis ID: ${report.analysis_id} &nbsp;·&nbsp; Powered by Claude (Anthropic) + 12 AI Agents &nbsp;·&nbsp; SIOS v2.0
 </div>
 <script>window.onload=function(){setTimeout(function(){window.print()},600)}</script>
 </body>
@@ -167,30 +404,22 @@ function downloadPDF(report: FullReport) {
   win.document.close()
 }
 
-// PDF popup modal
+// ── PDF Popup Modal ───────────────────────────────────────────────────────────
 function PDFModal({ report, onClose }: { report: FullReport; onClose: () => void }) {
   const vc = VERDICT_CONFIG[report.final_verdict] || { color: 'text-[#94a3b8]', bg: 'bg-[#111118]', border: 'border-[#1e1e2e]' }
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Modal */}
       <div className="relative bg-[#111118] border border-[#1e1e2e] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
-        {/* Success animation */}
         <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400/40 flex items-center justify-center mx-auto mb-5">
           <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-
         <h2 className="text-xl font-bold text-white mb-1">Analysis Complete!</h2>
         <p className="text-sm text-[#94a3b8] mb-5">
           Your SIOS report for <span className="text-white font-medium">{report.startup_name}</span> is ready.
         </p>
-
-        {/* Score + verdict */}
         <div className="flex items-center justify-center gap-4 mb-6">
           <div className="bg-[#0d0d14] border border-[#2e2e3e] rounded-xl px-5 py-3">
             <div className="text-3xl font-bold text-white">{report.score_breakdown.total_score}</div>
@@ -201,8 +430,6 @@ function PDFModal({ report, onClose }: { report: FullReport; onClose: () => void
             <div className="text-xs text-[#64748b] mt-0.5">{report.success_probability}% success</div>
           </div>
         </div>
-
-        {/* Actions */}
         <div className="space-y-3">
           <button
             onClick={() => downloadPDF(report)}
@@ -220,22 +447,25 @@ function PDFModal({ report, onClose }: { report: FullReport; onClose: () => void
             View Full Report
           </button>
         </div>
-
         <p className="text-xs text-[#475569] mt-4">
-          PDF opens in a new tab. Use your browser's print dialog to save as PDF.
+          PDF opens in a new tab · use browser print to save
         </p>
       </div>
     </div>
   )
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AnalysisPage() {
   const { id } = useParams<{ id: string }>()
-  const [events, setEvents]     = useState<ProgressEvent[]>([])
-  const [report, setReport]     = useState<FullReport | null>(null)
-  const [status, setStatus]     = useState<'running' | 'completed' | 'error'>('running')
-  const [errorMsg, setErrorMsg] = useState('')
-  const [showPDF, setShowPDF]   = useState(false)
+  const [events, setEvents]           = useState<ProgressEvent[]>([])
+  const [report, setReport]           = useState<FullReport | null>(null)
+  const [status, setStatus]           = useState<'running' | 'completed' | 'error'>('running')
+  const [errorMsg, setErrorMsg]       = useState('')
+  const [showPDF, setShowPDF]         = useState(false)
+  const [amendedPlan, setAmendedPlan] = useState<string | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError]     = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const completedCount = events.filter(e =>
@@ -259,15 +489,12 @@ export default function AnalysisPage() {
       }
     }
 
-    // On mount, check current status first — handles page refresh on a completed analysis
     getAnalysisStatus(id)
       .then(async (data) => {
-        // Replay any progress events already recorded
         if (Array.isArray(data.progress) && data.progress.length > 0) {
           setEvents(data.progress)
         }
         if (data.status === 'completed') {
-          // Already done — load report directly, no need for SSE
           await loadReport()
           return
         }
@@ -276,7 +503,6 @@ export default function AnalysisPage() {
           setStatus('error')
           return
         }
-        // Still running — start SSE with polling fallback
         unsub = subscribeToProgress(
           id,
           (event) => {
@@ -291,7 +517,6 @@ export default function AnalysisPage() {
         )
       })
       .catch(() => {
-        // Can't reach backend for initial status check — start SSE anyway
         unsub = subscribeToProgress(
           id,
           (event) => {
@@ -309,12 +534,33 @@ export default function AnalysisPage() {
     return () => { if (unsub) unsub() }
   }, [id])
 
+  async function handleGeneratePlan() {
+    if (!id) return
+    setPlanLoading(true)
+    setPlanError('')
+    try {
+      const result = await generateAmendedPlan(id)
+      setAmendedPlan(result.amended_plan)
+    } catch (e: any) {
+      setPlanError(e.message || 'Failed to generate amended plan')
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
   const verdict = report?.final_verdict || ''
   const vc = VERDICT_CONFIG[verdict] || { color: 'text-[#94a3b8]', bg: 'bg-[#111118]', border: 'border-[#1e1e2e]' }
 
   return (
     <>
       {showPDF && report && <PDFModal report={report} onClose={() => setShowPDF(false)} />}
+      {amendedPlan && report && (
+        <AmendedPlanModal
+          plan={amendedPlan}
+          startupName={report.startup_name}
+          onClose={() => setAmendedPlan(null)}
+        />
+      )}
 
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
         {/* Top bar */}
@@ -362,7 +608,7 @@ export default function AnalysisPage() {
           <div className="flex justify-between mt-2">
             <span className="text-xs text-[#475569]">
               {completedCount} of {TOTAL_AGENTS} agents done
-              {status === 'running' && ' · est. 2–5 min total'}
+              {status === 'running' && ' · est. 3–6 min total'}
             </span>
             {status === 'completed' && report && (
               <button
@@ -377,7 +623,9 @@ export default function AnalysisPage() {
 
         {/* Agent progress list */}
         <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-[#64748b] uppercase tracking-wider mb-4">Agent Pipeline</h2>
+          <h2 className="text-sm font-semibold text-[#64748b] uppercase tracking-wider mb-4">
+            Agent Pipeline · 12 Agents
+          </h2>
           {events.length === 0 && (
             <div className="flex items-center gap-2 text-[#475569] text-sm">
               <span className="w-3 h-3 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
@@ -395,7 +643,7 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        {/* Report */}
+        {/* Full Report */}
         {report && (
           <>
             {/* Score Dashboard */}
@@ -421,6 +669,12 @@ export default function AnalysisPage() {
                   </div>
                 ))}
               </div>
+              {/* Moat score if available */}
+              {report.moat_score != null && (
+                <div className="mt-4 pt-4 border-t border-[#1e1e2e]">
+                  <MoatBadge score={report.moat_score} />
+                </div>
+              )}
             </div>
 
             {/* Verdict card */}
@@ -429,21 +683,42 @@ export default function AnalysisPage() {
               <p className="text-[#94a3b8] text-sm leading-relaxed mt-3">{report.funding_recommendation}</p>
             </div>
 
-            {/* PDF download button */}
-            <div className="flex justify-center">
+            {/* Action buttons row */}
+            <div className="flex flex-wrap gap-3 justify-center">
               <button
                 onClick={() => setShowPDF(true)}
-                className="btn-primary px-8 py-3 flex items-center gap-2 text-sm"
+                className="btn-primary px-6 py-3 flex items-center gap-2 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
                 </svg>
-                Download Full PDF Report
+                Download PDF Report
+              </button>
+              <button
+                onClick={handleGeneratePlan}
+                disabled={planLoading}
+                className="flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {planLoading ? (
+                  <span className="w-4 h-4 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                )}
+                {planLoading ? 'Generating...' : 'Generate Amended Business Plan'}
+                <span className="text-xs text-violet-400/60 font-normal">2 credits</span>
               </button>
             </div>
+            {planError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-sm text-center">
+                {planError}
+              </div>
+            )}
 
-            {/* Report sections */}
+            {/* ── Core Report Sections ────────────────────────────────── */}
             <div className="space-y-4">
+              <h2 className="text-xs font-semibold text-[#475569] uppercase tracking-widest px-1">Core Analysis</h2>
               <Section title="1. Executive Summary"          content={report.executive_summary} />
               <Section title="2. Startup Overview"           content={report.startup_overview} />
               <Section title="3. Founder Analysis"           content={report.founder_analysis} />
@@ -454,10 +729,113 @@ export default function AnalysisPage() {
               <Section title="8. Scaling Roadmap"            content={report.scaling_roadmap} />
             </div>
 
+            {/* ── Strategic Intelligence (v2 agents) ─────────────────── */}
+            {(report.alternative_strategies || report.moat_analysis || report.execution_simulation
+              || report.build_vs_partner || report.investor_fit) && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xs font-semibold text-[#475569] uppercase tracking-widest px-1">Strategic Intelligence</h2>
+                  <span className="text-xs bg-violet-500/20 text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded font-medium">v2</span>
+                </div>
+
+                {/* Alternative Strategies */}
+                {report.alternative_strategies && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <button
+                      onClick={(e) => { const s = e.currentTarget.nextElementSibling as HTMLElement; s.style.display = s.style.display === 'none' ? '' : 'none' }}
+                      className="w-full flex items-center justify-between mb-4 text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">🔄</span>
+                        <h3 className="font-semibold text-white">Alternative Strategies</h3>
+                      </div>
+                    </button>
+                    <div>
+                      <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap mb-2">
+                        {report.alternative_strategies}
+                      </div>
+                      {report.pivot_paths && <PivotCards pivots={report.pivot_paths} />}
+                    </div>
+                  </div>
+                )}
+
+                {/* Moat Analysis */}
+                {report.moat_analysis && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">🏰</span>
+                      <h3 className="font-semibold text-white">Competitive Moat Analysis</h3>
+                      {report.moat_score != null && <MoatBadge score={report.moat_score} />}
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap">
+                      {report.moat_analysis}
+                    </div>
+                  </div>
+                )}
+
+                {/* Execution Simulation */}
+                {report.execution_simulation && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">⚡</span>
+                      <h3 className="font-semibold text-white">Execution Risk Simulation</h3>
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap mb-2">
+                      {report.execution_simulation}
+                    </div>
+                    {report.execution_risks && <RiskTable risks={report.execution_risks} />}
+                  </div>
+                )}
+
+                {/* Build vs Partner Matrix */}
+                {report.build_vs_partner && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">🔧</span>
+                      <h3 className="font-semibold text-white">Build vs Partner Matrix</h3>
+                      <div className="flex gap-2">
+                        <span className="text-xs bg-violet-500/20 text-violet-300 border border-violet-500/30 px-2 py-0.5 rounded">BUILD</span>
+                        <span className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded">PARTNER</span>
+                        <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded">BUY</span>
+                      </div>
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap mb-2">
+                      {report.build_vs_partner}
+                    </div>
+                    {report.build_vs_partner_matrix && <BvpTable items={report.build_vs_partner_matrix} />}
+                  </div>
+                )}
+
+                {/* Investor Fit */}
+                {report.investor_fit && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">💰</span>
+                      <h3 className="font-semibold text-white">Investor Fit Intelligence</h3>
+                      {report.fundraising_difficulty && (
+                        <span className="text-xs border border-[#2e2e3e] text-[#94a3b8] px-2 py-0.5 rounded">
+                          {report.fundraising_difficulty} raise
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap mb-2">
+                      {report.investor_fit}
+                    </div>
+                    {report.investor_archetypes && <InvestorCards archetypes={report.investor_archetypes} />}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Custom Q&A ──────────────────────────────────────────── */}
+            {report.custom_qa && report.custom_qa.length > 0 && (
+              <CustomQASection qaList={report.custom_qa} />
+            )}
+
             {/* Footer */}
             <div className="text-center text-xs text-[#475569] py-4 border-t border-[#1e1e2e]">
               Generated {new Date(report.generated_at).toLocaleString()} &bull;
-              Powered by Claude (Anthropic) + GPT-4 (OpenAI) + Tavily
+              Powered by Claude (Anthropic) · 12 AI Agents · SIOS v2.0
             </div>
           </>
         )}
