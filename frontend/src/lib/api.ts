@@ -85,34 +85,105 @@ export async function getReport(analysisId: string): Promise<FullReport> {
   return res.json()
 }
 
+export async function getAnalysisStatus(analysisId: string): Promise<{
+  status: string
+  progress: ProgressEvent[]
+  error?: string
+}> {
+  const res = await fetch(`${API_URL}/api/analysis/${analysisId}/status`)
+  if (!res.ok) throw new Error(`Status check failed: ${res.statusText}`)
+  return res.json()
+}
+
 export function subscribeToProgress(
   analysisId: string,
   onProgress: (event: ProgressEvent) => void,
   onComplete: () => void,
   onError: (error: string) => void,
 ): () => void {
-  const evtSource = new EventSource(`${API_URL}/api/analysis/${analysisId}/stream`)
+  let evtSource: EventSource | null = null
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+  let done = false
+  const seenEvents = new Set<string>()
 
-  evtSource.addEventListener('progress', (e) => {
-    try { onProgress(JSON.parse(e.data)) } catch {}
-  })
+  function cleanup() {
+    done = true
+    if (evtSource) { evtSource.close(); evtSource = null }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  }
 
-  evtSource.addEventListener('complete', () => {
-    evtSource.close()
-    onComplete()
-  })
+  // Polling fallback — kicks in when SSE drops or fails to connect
+  function startPolling() {
+    if (pollTimer || done) return
+    pollTimer = setInterval(async () => {
+      if (done) return
+      try {
+        const data = await getAnalysisStatus(analysisId)
+        // Replay any progress events we haven't seen yet
+        if (Array.isArray(data.progress)) {
+          data.progress.forEach((evt: ProgressEvent) => {
+            const key = `${evt.agent}:${evt.status}`
+            if (!seenEvents.has(key)) {
+              seenEvents.add(key)
+              onProgress(evt)
+            }
+          })
+        }
+        if (data.status === 'completed') {
+          cleanup()
+          onComplete()
+        } else if (data.status === 'error') {
+          cleanup()
+          onError(data.error || 'Analysis failed')
+        }
+      } catch {
+        // Network blip — keep polling silently
+      }
+    }, 4000)
+  }
 
-  evtSource.addEventListener('error', (e: any) => {
-    try {
-      const data = JSON.parse(e.data)
-      onError(data.error || 'Unknown error')
-    } catch {
-      onError('Connection error')
-    }
-    evtSource.close()
-  })
+  // Try SSE first (real-time updates)
+  try {
+    evtSource = new EventSource(`${API_URL}/api/analysis/${analysisId}/stream`)
 
-  return () => evtSource.close()
+    evtSource.addEventListener('progress', (e) => {
+      try {
+        const evt = JSON.parse(e.data) as ProgressEvent
+        const key = `${evt.agent}:${evt.status}`
+        if (!seenEvents.has(key)) {
+          seenEvents.add(key)
+          onProgress(evt)
+        }
+      } catch {}
+    })
+
+    evtSource.addEventListener('complete', () => {
+      cleanup()
+      onComplete()
+    })
+
+    evtSource.addEventListener('error', (e: any) => {
+      // Check if this is a server-sent error (has data) vs a connection drop (no data)
+      try {
+        if (e.data) {
+          const data = JSON.parse(e.data)
+          if (data.error) {
+            cleanup()
+            onError(data.error)
+            return
+          }
+        }
+      } catch {}
+      // Connection dropped — close SSE and fall back to polling silently
+      if (evtSource) { evtSource.close(); evtSource = null }
+      startPolling()
+    })
+  } catch {
+    // SSE not supported or failed to open — go straight to polling
+    startPolling()
+  }
+
+  return cleanup
 }
 
 export async function getUserProfile(): Promise<any> {

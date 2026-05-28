@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { subscribeToProgress, getReport, FullReport, ProgressEvent } from '../../../lib/api'
+import { subscribeToProgress, getAnalysisStatus, getReport, FullReport, ProgressEvent } from '../../../lib/api'
 
 const TOTAL_AGENTS = 9
 
@@ -245,32 +245,68 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     if (!id) return
-    const unsub = subscribeToProgress(
-      id,
-      (event) => {
-        setEvents(prev => {
-          const exists = prev.some(e => e.agent === event.agent && e.status === event.status)
-          return exists ? prev : [...prev, event]
-        })
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-      },
-      async () => {
-        setStatus('completed')
-        try {
-          const r = await getReport(id)
-          setReport(r)
-          setShowPDF(true)
-        } catch (e: any) {
-          setErrorMsg(e.message)
-          setStatus('error')
-        }
-      },
-      (err) => {
-        setErrorMsg(err)
+    let unsub: (() => void) | null = null
+
+    async function loadReport() {
+      setStatus('completed')
+      try {
+        const r = await getReport(id)
+        setReport(r)
+        setShowPDF(true)
+      } catch (e: any) {
+        setErrorMsg(e.message)
         setStatus('error')
-      },
-    )
-    return unsub
+      }
+    }
+
+    // On mount, check current status first — handles page refresh on a completed analysis
+    getAnalysisStatus(id)
+      .then(async (data) => {
+        // Replay any progress events already recorded
+        if (Array.isArray(data.progress) && data.progress.length > 0) {
+          setEvents(data.progress)
+        }
+        if (data.status === 'completed') {
+          // Already done — load report directly, no need for SSE
+          await loadReport()
+          return
+        }
+        if (data.status === 'error') {
+          setErrorMsg(data.error || 'Analysis failed')
+          setStatus('error')
+          return
+        }
+        // Still running — start SSE with polling fallback
+        unsub = subscribeToProgress(
+          id,
+          (event) => {
+            setEvents(prev => {
+              const exists = prev.some(e => e.agent === event.agent && e.status === event.status)
+              return exists ? prev : [...prev, event]
+            })
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+          },
+          loadReport,
+          (err) => { setErrorMsg(err); setStatus('error') },
+        )
+      })
+      .catch(() => {
+        // Can't reach backend for initial status check — start SSE anyway
+        unsub = subscribeToProgress(
+          id,
+          (event) => {
+            setEvents(prev => {
+              const exists = prev.some(e => e.agent === event.agent && e.status === event.status)
+              return exists ? prev : [...prev, event]
+            })
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+          },
+          loadReport,
+          (err) => { setErrorMsg(err); setStatus('error') },
+        )
+      })
+
+    return () => { if (unsub) unsub() }
   }, [id])
 
   const verdict = report?.final_verdict || ''
