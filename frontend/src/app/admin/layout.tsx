@@ -26,26 +26,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     async function checkAdmin() {
       if (isLocalDev()) {
-        // Local dev — allow access without auth check
         setUser({ email: 'admin@localhost', isAdmin: true })
         setChecking(false)
         return
       }
+
+      // Step 1: must be logged in
       const { data } = await supabase.auth.getUser()
       if (!data.user) {
         router.push('/login')
         return
       }
-      // Check admin flag in JWT metadata
-      const { data: { session } } = await supabase.auth.getSession()
-      const meta = session?.user?.app_metadata || {}
-      const userMeta = session?.user?.user_metadata || {}
-      if (!meta.is_admin && !userMeta.is_admin) {
-        router.push('/dashboard')
-        return
+
+      // Step 2: verify admin by calling the backend (which checks the DB)
+      // This works even when JWT app_metadata doesn't have is_admin set
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const res = await fetch(`${API_URL}/api/admin/stats`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (res.status === 403 || res.status === 401) {
+          router.push('/dashboard')
+          return
+        }
+        // 200 = admin confirmed
+        setUser(data.user)
+        setChecking(false)
+      } catch {
+        // Backend unreachable — fall back to allowing if user is authenticated
+        setUser(data.user)
+        setChecking(false)
       }
-      setUser(data.user)
-      setChecking(false)
     }
     checkAdmin()
   }, [])
