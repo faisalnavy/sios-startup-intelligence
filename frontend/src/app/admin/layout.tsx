@@ -38,27 +38,38 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return
       }
 
-      // Step 2: verify admin by calling the backend (which checks the DB)
-      // This works even when JWT app_metadata doesn't have is_admin set
+      // Step 2: fetch user profile from backend — it returns is_admin from the DB
+      // This is reliable even when Supabase JWT app_metadata doesn't have is_admin
       try {
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-        const res = await fetch(`${API_URL}/api/admin/stats`, {
+        const res = await fetch(`${API_URL}/api/user/profile`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
-        if (res.status === 403 || res.status === 401) {
-          router.push('/dashboard')
+        if (res.ok) {
+          const profile = await res.json()
+          if (!profile.is_admin) {
+            router.push('/dashboard')
+            return
+          }
+          // is_admin = true confirmed via DB
+          setUser(data.user)
+          setChecking(false)
           return
         }
-        // 200 = admin confirmed
+      } catch {}
+
+      // Backend unreachable — check JWT email as last resort
+      // (only faisalnavy@gmail.com is admin, safe hardcode for fallback)
+      const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim())
+      const userEmail = data.user.email || ''
+      if (adminEmails.length > 0 && adminEmails.includes(userEmail)) {
         setUser(data.user)
         setChecking(false)
-      } catch {
-        // Backend unreachable — fall back to allowing if user is authenticated
-        setUser(data.user)
-        setChecking(false)
+        return
       }
+      router.push('/dashboard')
     }
     checkAdmin()
   }, [])
