@@ -125,6 +125,12 @@ class FullReport(BaseModel):
     investor_archetypes: List[InvestorArchetype] = []
     fundraising_difficulty: str = ""           # EASY / MODERATE / HARD / VERY HARD
 
+    # ── NEW v2 Tier 2: 3 new agent sections ─────────────────────────
+    startup_autopsy: str = ""               # Startup Autopsy Agent
+    gtm_playbook: str = ""                  # GTM Intelligence Agent
+    founder_psychology: str = ""            # Founder Psychology Agent
+    founder_psychology_score: int = 0       # 0-100 composite psychology score
+
     # ── NEW v2: Custom Q&A ────────────────────────────────────────────
     custom_qa: List[CustomQA] = []
 

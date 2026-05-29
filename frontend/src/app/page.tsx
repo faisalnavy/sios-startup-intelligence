@@ -14,8 +14,8 @@ const FEATURES = [
   },
   {
     icon: '⚡',
-    title: '12 Parallel AI Agents',
-    desc: 'Market, VC, competitor, failure risk, financial, country feasibility, trend, moat, execution simulation, build vs partner, investor fit, and scoring agents — all run simultaneously.',
+    title: '15 Parallel AI Agents',
+    desc: 'Market, VC, competitor, failure risk, financial, country feasibility, trend, moat, execution simulation, build vs partner, investor fit, startup autopsy, GTM intelligence, founder psychology — all run simultaneously.',
   },
   {
     icon: '📊',
@@ -59,7 +59,7 @@ const PACKS = [
 
 const STEPS = [
   { n: '01', t: 'Submit Your Idea', d: 'Fill in your startup details: name, description, target market, stage, and founder background.' },
-  { n: '02', t: '12 Agents Deploy', d: 'Market, VC, competitor, financial, risk, moat, execution simulation, investor fit, and more — all run in parallel.' },
+  { n: '02', t: '15 Agents Deploy', d: 'Market, VC, competitor, financial, risk, moat, execution simulation, startup autopsy, GTM intelligence, founder psychology, investor fit — all run in parallel.' },
   { n: '03', t: 'Dual-AI Analysis', d: 'Claude analyzes each dimension. GPT-4 cross-validates. Claude synthesizes a final consensus report.' },
   { n: '04', t: 'Download Report', d: 'Get a 15-section PDF with score, verdict, risk matrix, moat analysis, strategic alternatives — in under 6 minutes.' },
 ]
@@ -101,7 +101,7 @@ export default function LandingPage() {
         <div className="relative max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 rounded-full px-4 py-1.5 text-sm text-violet-400 mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            12 AI Agents · Dual-AI Cross-Validation · Real-Time Web Research
+            15 AI Agents · Dual-AI Cross-Validation · Real-Time Web Research
           </div>
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
             Know If Your Startup<br />
@@ -123,7 +123,7 @@ export default function LandingPage() {
           {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
             {[
-              { n: '12', l: 'AI Agents' },
+              { n: '15', l: 'AI Agents' },
               { n: '2', l: 'AI Models' },
               { n: '21+', l: 'Data Sources' },
               { n: '<5min', l: 'Avg. Report Time' },
@@ -182,6 +182,7 @@ export default function LandingPage() {
               'Financial & CA', 'Country Feasibility', 'Trend Analysis',
               'Alternative Strategy', 'Moat Analysis', 'Execution Simulation',
               'Build vs Partner', 'Investor Fit',
+              'Startup Autopsy', 'GTM Intelligence', 'Founder Psychology',
               'Scoring Engine', 'Investment Recommendation',
             ].map(a => (
               <span key={a} className="text-xs bg-[#0a0a0f] border border-[#1e1e2e] text-[#94a3b8] px-3 py-1.5 rounded-full">

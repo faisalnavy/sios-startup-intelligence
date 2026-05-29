@@ -33,12 +33,17 @@ from agents.financial_agent import FinancialCAAgent
 from agents.country_agent import CountryFeasibilityAgent
 from agents.trend_agent import TrendAnalysisAgent
 
-# NEW v2 agents
+# NEW v2 Tier 1 agents
 from agents.alternative_strategy_agent import AlternativeStrategyAgent
 from agents.moat_agent import MoatAnalysisAgent
 from agents.execution_simulation_agent import ExecutionSimulationAgent
 from agents.build_vs_partner_agent import BuildVsPartnerAgent
 from agents.investor_fit_agent import InvestorFitAgent
+
+# NEW v2 Tier 2 agents
+from agents.startup_autopsy_agent import StartupAutopsyAgent
+from agents.gtm_intelligence_agent import GTMIntelligenceAgent
+from agents.founder_psychology_agent import FounderPsychologyAgent
 
 # Engines
 from agents.scoring_engine import ScoringEngine
@@ -57,12 +62,17 @@ class MasterOrchestrator:
         self.country_agent = CountryFeasibilityAgent()
         self.trend_agent = TrendAnalysisAgent()
 
-        # NEW v2 agents
+        # NEW v2 Tier 1 agents
         self.alt_strategy_agent = AlternativeStrategyAgent()
         self.moat_agent = MoatAnalysisAgent()
         self.execution_agent = ExecutionSimulationAgent()
         self.build_vs_partner_agent = BuildVsPartnerAgent()
         self.investor_fit_agent = InvestorFitAgent()
+
+        # NEW v2 Tier 2 agents
+        self.autopsy_agent = StartupAutopsyAgent()
+        self.gtm_agent = GTMIntelligenceAgent()
+        self.psychology_agent = FounderPsychologyAgent()
 
         # Engines
         self.scoring_engine = ScoringEngine()
@@ -105,12 +115,16 @@ class MasterOrchestrator:
             "financial":   self.financial_agent.run(startup),
             "country":     self.country_agent.run(startup),
             "trend":       self.trend_agent.run(startup),
-            # NEW v2
+            # NEW v2 Tier 1
             "alt_strategy":    self.alt_strategy_agent.run(startup),
             "moat":            self.moat_agent.run(startup),
             "execution":       self.execution_agent.run(startup),
             "build_vs_partner":self.build_vs_partner_agent.run(startup),
             "investor_fit":    self.investor_fit_agent.run(startup),
+            # NEW v2 Tier 2
+            "autopsy":         self.autopsy_agent.run(startup),
+            "gtm":             self.gtm_agent.run(startup),
+            "psychology":      self.psychology_agent.run(startup),
         }
 
         # Emit running for all agents
@@ -126,6 +140,9 @@ class MasterOrchestrator:
         emit("Execution Simulation Agent",    "running")
         emit("Build vs Partner Agent",        "running")
         emit("Investor Fit Agent",            "running")
+        emit("Startup Autopsy Agent",         "running")
+        emit("GTM Intelligence Agent",        "running")
+        emit("Founder Psychology Agent",      "running")
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         agent_data = dict(zip(tasks.keys(), results))
@@ -157,6 +174,9 @@ class MasterOrchestrator:
         execution_text    = extract("execution")
         build_partner_text= extract("build_vs_partner")
         investor_fit_text = extract("investor_fit")
+        autopsy_text      = extract("autopsy")
+        gtm_text          = extract("gtm")
+        psychology_text   = extract("psychology")
 
         # ── Phase 2: Scoring ──────────────────────────────────────────
         emit("Scoring Engine", "running")
@@ -200,6 +220,9 @@ class MasterOrchestrator:
             execution_text=execution_text,
             build_partner_text=build_partner_text,
             investor_fit_text=investor_fit_text,
+            autopsy_text=autopsy_text,
+            gtm_text=gtm_text,
+            psychology_text=psychology_text,
             score=score_breakdown,
             recommendation=recommendation,
         )
@@ -243,7 +266,7 @@ class MasterOrchestrator:
             scaling_roadmap=report_sections.get("scaling_roadmap", ""),
             final_verdict=verdict,
 
-            # NEW v2 sections
+            # NEW v2 Tier 1 sections
             alternative_strategies=alt_strategy_text,
             pivot_paths=[],
             moat_analysis=moat_text,
@@ -255,6 +278,12 @@ class MasterOrchestrator:
             investor_fit=investor_fit_text,
             investor_archetypes=[],
             fundraising_difficulty=self._extract_fundraising_difficulty(investor_fit_text),
+
+            # NEW v2 Tier 2 sections
+            startup_autopsy=autopsy_text,
+            gtm_playbook=gtm_text,
+            founder_psychology=psychology_text,
+            founder_psychology_score=self._extract_psychology_score(psychology_text),
 
             # Custom Q&A
             custom_qa=custom_qa_list,
@@ -279,6 +308,17 @@ class MasterOrchestrator:
             if level in investor_fit_text.upper():
                 return level
         return "MODERATE"
+
+    def _extract_psychology_score(self, psychology_text: str) -> int:
+        """Extract composite psychology score from founder psychology analysis."""
+        import re
+        # Look for patterns like "Realism Index: 72/100" or dimension scores
+        scores = re.findall(r'(\d{1,3})\s*/\s*100', psychology_text)
+        if scores:
+            nums = [int(s) for s in scores if 0 <= int(s) <= 100]
+            if nums:
+                return round(sum(nums[:6]) / min(len(nums[:6]), 6))  # avg of first 6 dimension scores
+        return 50  # Default neutral score
 
     async def _generate_custom_qa(self, startup: StartupInput, report_sections: dict) -> list:
         """Generate specific answers to the founder's custom questions."""
@@ -348,8 +388,11 @@ Q2: [answer]
         execution_text: str,
         build_partner_text: str,
         investor_fit_text: str,
-        score: ScoreBreakdown,
-        recommendation: dict,
+        autopsy_text: str = "",
+        gtm_text: str = "",
+        psychology_text: str = "",
+        score: ScoreBreakdown = None,
+        recommendation: dict = None,
     ) -> dict:
         system_prompt = """You are a world-class startup intelligence report writer.
 You produce executive-grade reports comparable to McKinsey, Sequoia, and top-tier VC research.
@@ -372,7 +415,10 @@ MOAT ANALYSIS: {moat_text[:500]}
 EXECUTION SIMULATION: {execution_text[:500]}
 BUILD VS PARTNER: {build_partner_text[:400]}
 INVESTOR FIT: {investor_fit_text[:400]}
-RECOMMENDATION: {recommendation.get('verdict_reasoning', '')}"""
+STARTUP AUTOPSY: {autopsy_text[:500]}
+GTM PLAYBOOK: {gtm_text[:500]}
+FOUNDER PSYCHOLOGY: {psychology_text[:400]}
+RECOMMENDATION: {recommendation.get('verdict_reasoning', '') if recommendation else ''}"""
 
         sections_prompt = f"""Based on the complete startup intelligence data below, write these report sections:
 
@@ -390,10 +436,10 @@ Write each section clearly labeled:
 (Founder background assessment, founder-market fit score, key strengths, key gaps, and recommended team additions)
 
 ## GROWTH_STRATEGY
-(Specific recommended growth actions: customer acquisition channels, partnerships, pricing strategy, distribution approach. Reference the build vs partner insights.)
+(Specific recommended growth actions: customer acquisition channels, partnerships, pricing strategy, distribution approach. Reference the build vs partner insights AND the GTM playbook channel priorities.)
 
 ## SCALING_ROADMAP
-(12-month, 24-month, 36-month milestones and scaling plan. Reference the execution simulation insights on where bottlenecks will appear.)"""
+(12-month, 24-month, 36-month milestones and scaling plan. Reference the execution simulation insights on where bottlenecks will appear. Reference the startup autopsy trajectory prediction on which analogue company this resembles.)"""
 
         raw = await self.claude.analyze(
             system_prompt=system_prompt,

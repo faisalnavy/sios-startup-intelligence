@@ -16,7 +16,7 @@ import {
   CustomQA,
 } from '../../../lib/api'
 
-const TOTAL_AGENTS = 12  // 7 original + 5 new v2 agents
+const TOTAL_AGENTS = 15  // 7 original + 5 Tier 1 + 3 Tier 2 agents
 
 const VERDICT_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
   'STRONG BUY':       { color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/30' },
@@ -319,6 +319,9 @@ function downloadPDF(report: FullReport) {
     ...(report.execution_simulation   ? [{ title: '12. Execution Simulation',   content: report.execution_simulation }] : []),
     ...(report.build_vs_partner       ? [{ title: '13. Build vs Partner',       content: report.build_vs_partner }] : []),
     ...(report.investor_fit           ? [{ title: '14. Investor Fit',           content: report.investor_fit }] : []),
+    ...(report.startup_autopsy        ? [{ title: '15. Startup Autopsy',        content: report.startup_autopsy }] : []),
+    ...(report.gtm_playbook           ? [{ title: '16. GTM Intelligence',       content: report.gtm_playbook }] : []),
+    ...(report.founder_psychology     ? [{ title: '17. Founder Psychology',     content: report.founder_psychology }] : []),
     ...(report.custom_qa?.length ? [{
       title: '15. Your Questions Answered',
       content: report.custom_qa.map((qa, i) => `Q${i+1}: ${qa.question}\n\nA: ${qa.answer}`).join('\n\n---\n\n'),
@@ -624,7 +627,7 @@ export default function AnalysisPage() {
         {/* Agent progress list */}
         <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
           <h2 className="text-sm font-semibold text-[#64748b] uppercase tracking-wider mb-4">
-            Agent Pipeline · 12 Agents
+            Agent Pipeline · 15 Agents
           </h2>
           {events.length === 0 && (
             <div className="flex items-center gap-2 text-[#475569] text-sm">
@@ -731,7 +734,8 @@ export default function AnalysisPage() {
 
             {/* ── Strategic Intelligence (v2 agents) ─────────────────── */}
             {(report.alternative_strategies || report.moat_analysis || report.execution_simulation
-              || report.build_vs_partner || report.investor_fit) && (
+              || report.build_vs_partner || report.investor_fit
+              || report.startup_autopsy || report.gtm_playbook || report.founder_psychology) && (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <h2 className="text-xs font-semibold text-[#475569] uppercase tracking-widest px-1">Strategic Intelligence</h2>
@@ -822,6 +826,59 @@ export default function AnalysisPage() {
                       {report.investor_fit}
                     </div>
                     {report.investor_archetypes && <InvestorCards archetypes={report.investor_archetypes} />}
+                  </div>
+                )}
+
+                {/* Startup Autopsy */}
+                {report.startup_autopsy && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">🔬</span>
+                      <h3 className="font-semibold text-white">Startup Autopsy — Historical Analogues</h3>
+                      <span className="text-xs bg-violet-500/20 text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded font-medium">v2</span>
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap">
+                      {report.startup_autopsy}
+                    </div>
+                  </div>
+                )}
+
+                {/* GTM Intelligence */}
+                {report.gtm_playbook && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">🚀</span>
+                      <h3 className="font-semibold text-white">GTM Intelligence Playbook</h3>
+                      <span className="text-xs bg-violet-500/20 text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded font-medium">v2</span>
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap">
+                      {report.gtm_playbook}
+                    </div>
+                  </div>
+                )}
+
+                {/* Founder Psychology */}
+                {report.founder_psychology && (
+                  <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-lg">🧠</span>
+                      <h3 className="font-semibold text-white">Founder Psychology Profile</h3>
+                      {report.founder_psychology_score != null && report.founder_psychology_score > 0 && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                          report.founder_psychology_score >= 70
+                            ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                            : report.founder_psychology_score >= 45
+                            ? 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10'
+                            : 'text-red-400 border-red-400/30 bg-red-400/10'
+                        }`}>
+                          Psychology Score {report.founder_psychology_score}/100
+                        </span>
+                      )}
+                      <span className="text-xs bg-violet-500/20 text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded font-medium">v2</span>
+                    </div>
+                    <div className="text-[#94a3b8] text-sm leading-relaxed whitespace-pre-wrap">
+                      {report.founder_psychology}
+                    </div>
                   </div>
                 )}
               </div>

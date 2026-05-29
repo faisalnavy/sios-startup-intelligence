@@ -103,6 +103,11 @@ export interface FullReport {
   fundraising_difficulty?: string
   custom_qa?: CustomQA[]
   amended_plan?: string
+  // v2 Tier 2 agent fields
+  startup_autopsy?: string
+  gtm_playbook?: string
+  founder_psychology?: string
+  founder_psychology_score?: number
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
