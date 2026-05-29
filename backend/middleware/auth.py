@@ -6,28 +6,64 @@ import os
 bearer = HTTPBearer(auto_error=False)
 
 
+def _verify_via_supabase_api(token: str) -> dict:
+    """Verify a Supabase JWT using the Admin API (service role key).
+    Slower than local decode but works regardless of JWT secret config."""
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not service_key:
+        return {}
+    try:
+        from supabase import create_client
+        admin = create_client(supabase_url, service_key)
+        resp  = admin.auth.get_user(token)
+        if not resp or not resp.user:
+            return {}
+        u = resp.user
+        return {
+            "sub":           str(u.id),
+            "email":         u.email or "",
+            "app_metadata":  u.app_metadata  or {},
+            "user_metadata": u.user_metadata or {},
+        }
+    except Exception:
+        return {}
+
+
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(bearer)) -> dict:
     """Verify Supabase JWT token and return user payload."""
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    token      = credentials.credentials
     jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "")
-    if not jwt_secret:
-        # Supabase not configured — return a mock user for local dev
+
+    # ── Fast path: local JWT decode ───────────────────────────────────────────
+    if jwt_secret:
+        try:
+            payload = jwt.decode(
+                token,
+                jwt_secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+        except jwt.InvalidTokenError:
+            pass  # fall through to Supabase Admin API
+
+    # ── Slow path: Supabase Admin API (handles any valid Supabase token) ──────
+    payload = _verify_via_supabase_api(token)
+    if payload:
+        return payload
+
+    # ── Local-dev fallback (no Supabase configured at all) ───────────────────
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    if not supabase_url:
         return {"sub": "local-dev-user", "email": "dev@localhost.com"}
 
-    try:
-        payload = jwt.decode(
-            credentials.credentials,
-            jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    raise HTTPException(status_code=401, detail="Invalid token")
 
 
 def optional_token(credentials: HTTPAuthorizationCredentials = Security(bearer)) -> dict | None:

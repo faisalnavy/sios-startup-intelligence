@@ -109,9 +109,43 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   try {
     const { supabase } = await import('./supabase')
+
+    // Primary: use Supabase SDK getSession()
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.access_token) {
       headers['Authorization'] = `Bearer ${session.access_token}`
+      return headers
+    }
+
+    // Fallback: read Supabase SSR chunked cookies directly.
+    // @supabase/ssr splits large tokens across multiple cookies (.0, .1, …)
+    // with the format: sb-<projectRef>-auth-token.N=base64-<data> (first chunk)
+    if (typeof document !== 'undefined') {
+      const projectRef = (process.env.NEXT_PUBLIC_SUPABASE_URL || '')
+        .replace('https://', '')
+        .split('.')[0]
+      if (projectRef) {
+        const allCookies = document.cookie.split(';').map(c => c.trim())
+        const parts: string[] = []
+        for (let i = 0; i < 10; i++) {
+          const prefix = `sb-${projectRef}-auth-token.${i}=`
+          const match = allCookies.find(c => c.startsWith(prefix))
+          if (!match) break
+          let val = match.slice(prefix.length)
+          if (i === 0) val = val.replace(/^base64-/, '')
+          parts.push(val)
+        }
+        if (parts.length > 0) {
+          // Add padding if needed
+          const raw = parts.join('')
+          const padded = raw + '='.repeat((4 - raw.length % 4) % 4)
+          const combined = atob(padded)
+          const sessionData = JSON.parse(combined)
+          if (sessionData?.access_token) {
+            headers['Authorization'] = `Bearer ${sessionData.access_token}`
+          }
+        }
+      }
     }
   } catch {}
   return headers
