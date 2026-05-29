@@ -57,6 +57,41 @@ class DualAIService:
             "final_synthesis": final_output,
         }
 
+    async def analyze_with_critique(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: int = 3000,
+    ) -> dict:
+        """
+        2-step analysis used by Tier 1 & 2 agents:
+        1. Claude produces the primary analysis
+        2. OpenAI provides a quick critique / pushback
+
+        Returns {"claude_analysis": str, "openai_critique": str}
+        """
+        # Step 1: Claude primary analysis
+        claude_analysis = await self.claude.analyze(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_tokens=max_tokens,
+        )
+
+        # Step 2: OpenAI quick critique
+        try:
+            openai_critique = await self.openai.critique(
+                analysis_to_critique=claude_analysis,
+                context=user_message[:500],
+                domain="startup analysis",
+            )
+        except Exception:
+            openai_critique = ""  # Non-fatal — Claude output is still valid
+
+        return {
+            "claude_analysis": claude_analysis,
+            "openai_critique": openai_critique,
+        }
+
     async def cross_validate_json(
         self,
         system_prompt: str,
