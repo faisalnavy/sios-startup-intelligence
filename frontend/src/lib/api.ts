@@ -286,18 +286,34 @@ export async function getUserProfile(): Promise<any> {
 
 export async function getUserCredits(): Promise<number> {
   const headers = await getAuthHeaders()
-  const res = await fetch(`${API_URL}/api/user/credits`, { headers })
-  if (!res.ok) return 0
-  const data = await res.json()
-  return (data as any).credits ?? 0
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(`${API_URL}/api/user/credits`, { headers, signal: controller.signal })
+    if (!res.ok) return 0
+    const data = await res.json()
+    return (data as any).credits ?? 0
+  } catch {
+    return 0
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getUserAnalyses(): Promise<any[]> {
   const headers = await getAuthHeaders()
-  const res = await fetch(`${API_URL}/api/user/analyses`, { headers })
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data as any).analyses ?? []
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(`${API_URL}/api/user/analyses`, { headers, signal: controller.signal })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data as any).analyses ?? []
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getCreditPacks(): Promise<any> {

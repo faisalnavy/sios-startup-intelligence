@@ -2,18 +2,38 @@ from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import os
+import time
+import concurrent.futures
 
 bearer = HTTPBearer(auto_error=False)
+
+# ── Token verification cache ──────────────────────────────────────────────────
+# Avoids a slow Supabase network call on every authenticated request.
+# key: token → (payload dict, unix expiry timestamp)
+_token_cache: dict[str, tuple[dict, float]] = {}
+_CACHE_TTL = 300      # 5 min — Supabase tokens last 1hr by default, so this is safe
+_SUPABASE_TIMEOUT = 8.0  # Hard timeout so a slow Supabase never hangs a request
 
 
 def _verify_via_supabase_api(token: str) -> dict:
     """Verify a Supabase JWT using the Admin API (service role key).
-    Slower than local decode but works regardless of JWT secret config."""
+    Results are cached for 5 minutes so repeated requests are instant."""
+
+    # ── Cache fast path ───────────────────────────────────────────────────────
+    now = time.time()
+    cached = _token_cache.get(token)
+    if cached:
+        payload, expires_at = cached
+        if now < expires_at:
+            return payload
+        del _token_cache[token]  # Expired — evict
+
     supabase_url = os.getenv("SUPABASE_URL", "")
     service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not supabase_url or not service_key:
         return {}
-    try:
+
+    def _call_supabase():
         from supabase import create_client
         admin = create_client(supabase_url, service_key)
         resp  = admin.auth.get_user(token)
@@ -26,8 +46,23 @@ def _verify_via_supabase_api(token: str) -> dict:
             "app_metadata":  u.app_metadata  or {},
             "user_metadata": u.user_metadata or {},
         }
+
+    try:
+        # Run the synchronous supabase call in a thread with a hard timeout.
+        # Without this, a slow Supabase response blocks the entire FastAPI worker.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_call_supabase)
+            result = future.result(timeout=_SUPABASE_TIMEOUT)
+    except concurrent.futures.TimeoutError:
+        return {}
     except Exception:
         return {}
+
+    # Cache successful verifications
+    if result:
+        _token_cache[token] = (result, now + _CACHE_TTL)
+
+    return result
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(bearer)) -> dict:
